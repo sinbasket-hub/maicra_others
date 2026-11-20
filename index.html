@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スマート勤怠管理 | Smart Attendance</title>
+    <!-- Tailwind CSS の読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts (Inter & Noto Sans JP) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons の読み込み -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans JP', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased selection:bg-indigo-100 selection:text-indigo-900">
+
+    <!-- ヘッダー & ナビゲーション -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-4xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
+            <!-- ロゴ・タイトル -->
+            <div class="flex items-center space-x-2 shrink-0">
+                <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-sm">
+                    <i data-lucide="clock" class="w-5 h-5"></i>
+                </div>
+                <span class="font-bold text-base sm:text-lg tracking-tight text-slate-900">スマート勤怠</span>
+            </div>
+
+            <!-- タブ切り替えナビゲーション（3タブ構成） -->
+            <nav class="flex space-x-1 bg-slate-100 p-1 rounded-xl" role="tablist">
+                <button id="tab-btn-stamp" onclick="switchTab('stamp')" role="tab" aria-selected="true"
+                    class="flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 bg-white text-indigo-600 shadow-sm">
+                    <i data-lucide="fingerprint" class="w-4 h-4"></i>
+                    <span>打刻</span>
+                </button>
+                <button id="tab-btn-calendar" onclick="switchTab('calendar')" role="tab" aria-selected="false"
+                    class="flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 text-slate-600 hover:text-slate-900">
+                    <i data-lucide="calendar-days" class="w-4 h-4"></i>
+                    <span>カレンダー</span>
+                </button>
+                <button id="tab-btn-settings" onclick="switchTab('settings')" role="tab" aria-selected="false"
+                    class="flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 text-slate-600 hover:text-slate-900">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                    <span>設定管理</span>
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ領域 -->
+    <main class="flex-grow max-w-4xl w-full mx-auto px-4 sm:px-6 py-8">
+
+        <!-- ==========================================
+             1. 「打刻」タブビュー
+             ========================================== -->
+        <section id="view-stamp" class="space-y-6 transition-opacity duration-300">
+            
+            <!-- 打刻完了メッセージバナー（初期状態は非表示） -->
+            <div id="greeting-banner" class="hidden transform transition-all duration-300 ease-out">
+                <div id="greeting-card" class="rounded-2xl p-4 sm:p-5 border flex items-center justify-between shadow-sm">
+                    <div class="flex items-center space-x-3.5">
+                        <div id="greeting-icon-bg" class="p-2.5 rounded-xl">
+                            <i id="greeting-icon" data-lucide="sun" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h2 id="greeting-title" class="font-bold text-lg sm:text-xl">おはようございます。</h2>
+                            <p id="greeting-sub" class="text-sm opacity-90 mt-0.5">09:00:00 に出勤を記録しました。</p>
+                            <!-- メール送信ステータス表示 -->
+                            <div id="greeting-mail-status" class="mt-1.5 inline-flex items-center space-x-1.5 text-xs font-medium px-2.5 py-0.5 rounded-md bg-white/70">
+                                <!-- JSで動的に更新 -->
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="hideGreetingBanner()" class="p-1.5 rounded-lg opacity-60 hover:opacity-100 transition-opacity" aria-label="閉じる">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- メイン打刻カード -->
+            <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 sm:p-10">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                    
+                    <!-- 左側：アナログ時計 -->
+                    <div class="flex flex-col items-center justify-center">
+                        <div class="relative w-64 h-64 sm:w-72 sm:h-72 bg-slate-50 rounded-full p-3 shadow-inner border border-slate-200/60 flex items-center justify-center">
+                            <canvas id="analog-clock" class="w-full h-full rounded-full"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- 右側：デジタル日時・ステータス・打刻ボタン -->
+                    <div class="flex flex-col items-center md:items-start text-center md:text-left space-y-6">
+                        
+                        <!-- 当日のステータスバッジ -->
+                        <div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border" id="today-status-badge">
+                            <span class="w-2 h-2 rounded-full bg-slate-400" id="today-status-dot"></span>
+                            <span id="today-status-text">本日の打刻：未出勤</span>
+                        </div>
+
+                        <!-- 日付・デジタル時計 -->
+                        <div>
+                            <p id="digital-date" class="text-slate-500 font-medium text-base sm:text-lg tracking-wide">
+                                2026年11月21日 (土)
+                            </p>
+                            <div id="digital-time" class="text-4xl sm:text-5xl font-bold text-slate-900 tracking-tight font-mono mt-1">
+                                00:00:00
+                            </div>
+                        </div>
+
+                        <!-- 備考入力（任意） -->
+                        <div class="w-full">
+                            <label for="stamp-note" class="sr-only">備考（任意）</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                    <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                </div>
+                                <input type="text" id="stamp-note" placeholder="備考を入力（例：テレワーク、直行など）" maxlength="50"
+                                    class="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                            </div>
+                        </div>
+
+                        <!-- 打刻・退勤ボタン -->
+                        <div class="grid grid-cols-2 gap-3.5 w-full pt-1">
+                            <button id="btn-clock-in" onclick="recordAttendance('出勤')"
+                                class="group relative flex flex-col items-center justify-center py-4 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none text-white rounded-2xl shadow-md shadow-indigo-200 transition-all duration-150 focus:outline-none focus:ring-4 focus:ring-indigo-500/30">
+                                <div class="flex items-center space-x-2">
+                                    <i data-lucide="log-in" class="w-5 h-5 transition-transform group-hover:translate-x-0.5"></i>
+                                    <span class="text-lg font-bold tracking-wide">打刻</span>
+                                </div>
+                                <span id="btn-clock-in-sub" class="text-xs text-indigo-100 mt-0.5 font-medium">出勤を記録</span>
+                            </button>
+
+                            <button id="btn-clock-out" onclick="recordAttendance('退勤')"
+                                class="group relative flex flex-col items-center justify-center py-4 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none text-white rounded-2xl shadow-md shadow-emerald-200 transition-all duration-150 focus:outline-none focus:ring-4 focus:ring-emerald-500/30">
+                                <div class="flex items-center space-x-2">
+                                    <i data-lucide="log-out" class="w-5 h-5 transition-transform group-hover:translate-x-0.5"></i>
+                                    <span class="text-lg font-bold tracking-wide">退勤</span>
+                                </div>
+                                <span id="btn-clock-out-sub" class="text-xs text-emerald-100 mt-0.5 font-medium">退勤を記録</span>
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- 本日の打刻サマリー（直近の記録） -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-bold text-slate-700 flex items-center space-x-1.5">
+                        <i data-lucide="calendar-check" class="w-4 h-4 text-indigo-600"></i>
+                        <span>本日の打刻ログ</span>
+                    </h3>
+                    <div class="flex items-center space-x-3">
+                        <button onclick="switchTab('calendar')" class="text-xs font-medium text-slate-600 hover:text-indigo-600 flex items-center space-x-1">
+                            <span>カレンダーで確認</span>
+                        </button>
+                        <span class="text-slate-300">|</span>
+                        <button onclick="switchTab('settings')" class="text-xs font-medium text-indigo-600 hover:text-indigo-800 flex items-center space-x-1">
+                            <span>すべての履歴を見る</span>
+                            <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="today-logs-container" class="text-sm text-slate-500">
+                    <!-- JSで動的に描画 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ==========================================
+             2. 「カレンダー」タブビュー（新設）
+             ========================================== -->
+        <section id="view-calendar" class="hidden space-y-6 transition-opacity duration-300">
+            
+            <!-- カレンダー操作ヘッダー & 月間出勤日数サマリー -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex items-center justify-between sm:justify-start space-x-3">
+                    <div class="flex items-center bg-slate-100 rounded-xl p-1">
+                        <button onclick="changeCalendarMonth(-1)" title="前月"
+                            class="p-2 rounded-lg text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-xs transition-all">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <span id="calendar-month-label" class="px-4 font-bold text-base sm:text-lg text-slate-900 min-w-[130px] text-center">
+                            2026年 11月
+                        </span>
+                        <button onclick="changeCalendarMonth(1)" title="翌月"
+                            class="p-2 rounded-lg text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-xs transition-all">
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <button onclick="resetCalendarToToday()"
+                        class="px-3 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors">
+                        今月へ
+                    </button>
+                </div>
+
+                <!-- 選択中の月の出勤日数バッジ -->
+                <div class="flex items-center justify-between sm:justify-end space-x-3 bg-indigo-50/80 border border-indigo-100 px-4 py-2.5 rounded-xl">
+                    <div class="flex items-center space-x-2 text-indigo-900">
+                        <i data-lucide="briefcase" class="w-4 h-4 text-indigo-600"></i>
+                        <span class="text-xs sm:text-sm font-semibold">月間出勤日数</span>
+                    </div>
+                    <div class="text-indigo-700 font-bold text-lg sm:text-xl">
+                        <span id="calendar-month-workdays">0</span>
+                        <span class="text-xs font-medium ml-0.5">日</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 月間カレンダーグリッド本体 -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <!-- 凡例バー -->
+                <div class="px-4 sm:px-6 py-3 bg-slate-50/70 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                    <span>日付をタップすると詳細を確認できます</span>
+                    <div class="flex items-center space-x-4">
+                        <span class="flex items-center space-x-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block"></span>
+                            <span>出勤記録あり</span>
+                        </span>
+                        <span class="flex items-center space-x-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+                            <span>退勤済</span>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 曜日ヘッダー -->
+                <div class="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-xs font-bold py-2.5">
+                    <div class="text-rose-500">日</div>
+                    <div class="text-slate-600">月</div>
+                    <div class="text-slate-600">火</div>
+                    <div class="text-slate-600">水</div>
+                    <div class="text-slate-600">木</div>
+                    <div class="text-slate-600">金</div>
+                    <div class="text-blue-600">土</div>
+                </div>
+
+                <!-- 日付セルグリッド（JSで動的生成） -->
+                <div id="calendar-grid-body" class="grid grid-cols-7 divide-x divide-y divide-slate-100 bg-slate-100/30">
+                </div>
+            </div>
+
+            <!-- 選択日の詳細パネル -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-sm">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
+                    <div class="flex items-center space-x-2.5">
+                        <div class="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                            <i data-lucide="calendar-search" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h3 id="selected-day-title" class="font-bold text-base sm:text-lg text-slate-900">
+                                2026年11月21日 (土) の勤怠詳細
+                            </h3>
+                            <p id="selected-day-subtitle" class="text-xs text-slate-500">
+                                選択した日付の打刻タイムライン
+                            </p>
+                        </div>
+                    </div>
+                    <div id="selected-day-worktime" class="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
+                        <!-- 勤務時間サマリーをJSで表示 -->
+                    </div>
+                </div>
+
+                <!-- 選択日の打刻リスト -->
+                <div id="selected-day-details" class="pt-4">
+                    <!-- JSで動的に描画 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ==========================================
+             3. 「設定管理」タブビュー
+             ========================================== -->
+        <section id="view-settings" class="hidden space-y-6 transition-opacity duration-300">
+            
+            <!-- 出勤日数・集計サマリーカード（新設） -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <!-- 総出勤日数 -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-500">総出勤日数（累計）</p>
+                        <div class="mt-1 flex items-baseline space-x-1">
+                            <span id="stat-total-workdays" class="text-3xl font-bold text-indigo-600">0</span>
+                            <span class="text-sm font-medium text-slate-600">日</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1">出勤打刻のあるユニーク日数</p>
+                    </div>
+                    <div class="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                        <i data-lucide="award" class="w-6 h-6"></i>
+                    </div>
+                </div>
+
+                <!-- 今月の出勤日数 -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p id="stat-current-month-label" class="text-xs font-semibold text-slate-500">今月の出勤日数</p>
+                        <div class="mt-1 flex items-baseline space-x-1">
+                            <span id="stat-current-month-workdays" class="text-3xl font-bold text-emerald-600">0</span>
+                            <span class="text-sm font-medium text-slate-600">日</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1">当月内の出勤カウント</p>
+                    </div>
+                    <div class="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+                        <i data-lucide="calendar-check-2" class="w-6 h-6"></i>
+                    </div>
+                </div>
+
+                <!-- 総打刻レコード数 -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-500">総打刻ログ数</p>
+                        <div class="mt-1 flex items-baseline space-x-1">
+                            <span id="stat-total-logs" class="text-3xl font-bold text-slate-800">0</span>
+                            <span class="text-sm font-medium text-slate-600">件</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1">出勤・退勤の合計記録数</p>
+                    </div>
+                    <div class="p-3 bg-slate-100 text-slate-600 rounded-2xl">
+                        <i data-lucide="database" class="w-6 h-6"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Outlookメール自動送信設定（GAS連携）カード -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-sm space-y-5">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center space-x-2">
+                            <i data-lucide="mail-check" class="w-5 h-5 text-indigo-600"></i>
+                            <span>Outlookメール自動送信設定（GAS連携）</span>
+                        </h2>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">
+                            打刻・退勤のたびにGoogle Apps Script経由でOutlookへ控えメールを自動送信します。
+                        </p>
+                    </div>
+
+                    <!-- 自動送信 ON/OFF トグル -->
+                    <label class="inline-flex items-center cursor-pointer shrink-0 select-none bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
+                        <input type="checkbox" id="mail-auto-enabled" class="sr-only peer">
+                        <div class="relative w-10 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-400 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                        <span id="mail-toggle-label" class="ms-2.5 text-xs font-bold text-slate-700">自動送信: OFF</span>
+                    </label>
+                </div>
+
+                <!-- 設定入力フォーム -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="mail-target-email" class="block text-xs font-bold text-slate-700 mb-1.5">
+                            送信先 Outlook メールアドレス <span class="text-rose-500">*</span>
+                        </label>
+                        <input type="email" id="mail-target-email" placeholder="example@outlook.jp"
+                            class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                    </div>
+
+                    <div>
+                        <label for="mail-user-name" class="block text-xs font-bold text-slate-700 mb-1.5">
+                            氏名・差出人表記（メール本文に記載）
+                        </label>
+                        <input type="text" id="mail-user-name" placeholder="例：山田 太郎"
+                            class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        <label for="mail-gas-url" class="block text-xs font-bold text-slate-700 mb-1.5">
+                            Google Apps Script ウェブアプリURL <span class="text-rose-500">*</span>
+                        </label>
+                        <input type="url" id="mail-gas-url" placeholder="https://script.google.com/macros/s/xxxxx/exec"
+                            class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                    </div>
+                </div>
+
+                <!-- 保存・テスト送信・GASコード表示ボタン -->
+                <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+                    <button type="button" onclick="toggleGasGuide()"
+                        class="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3.5 py-2 rounded-xl transition-colors">
+                        <i data-lucide="code-2" class="w-4 h-4"></i>
+                        <span>GAS側スクリプトと設定手順を見る</span>
+                    </button>
+
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <button type="button" id="btn-test-mail" onclick="sendTestEmail()"
+                            class="inline-flex items-center space-x-1.5 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-colors">
+                            <i data-lucide="send" class="w-4 h-4 text-indigo-600"></i>
+                            <span>テストメール送信</span>
+                        </button>
+                        <button type="button" onclick="saveMailSettings()"
+                            class="inline-flex items-center space-x-1.5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-sm transition-colors">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            <span>メール設定を保存</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 折りたたみ式：GASセットアップガイド＆コードコピー -->
+                <div id="gas-setup-guide" class="hidden pt-3 border-t border-slate-100 space-y-3">
+                    <div class="bg-slate-50 rounded-xl p-4 border border-slate-200/80 text-xs text-slate-600 space-y-2">
+                        <p class="font-bold text-slate-800 text-sm">GAS側のセットアップ手順（初回のみ・約2分）</p>
+                        <ol class="list-decimal list-inside space-y-1 leading-relaxed">
+                            <li>Googleドライブで「新規」＞「その他」＞「Google Apps Script」を作成します。</li>
+                            <li>下のコードをすべてコピーして貼り付け、保存します。</li>
+                            <li>右上の「デプロイ」＞「新しいデプロイ」から種類を<strong>「ウェブアプリ」</strong>に設定します。</li>
+                            <li>アクセスできるユーザーを<strong>「全員」</strong>にしてデプロイし、発行されたURLを上の欄に貼り付けてください。</li>
+                        </ol>
+                    </div>
+
+                    <div class="relative">
+                        <button type="button" onclick="copyGasCode()"
+                            class="absolute top-2.5 right-2.5 inline-flex items-center space-x-1 px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded-lg shadow-xs transition-colors">
+                            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                            <span>コードをコピー</span>
+                        </button>
+                        <pre id="gas-script-code" class="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed">function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var toEmail = data.email;
+    var type = data.type;
+    var time = data.time;
+    var note = data.note || "なし";
+    var userName = data.userName || "未設定";
+
+    var subject = "【勤怠控え】" + type + "打刻のお知らせ（" + time + "）";
+    var body = "お疲れさまです。\n"
+             + "以下の内容で勤怠打刻が完了しました。\n\n"
+             + "■ 氏名：" + userName + "\n"
+             + "■ 種別：" + type + "\n"
+             + "■ 日時：" + time + "\n"
+             + "■ 備考：" + note + "\n\n"
+             + "----------------------------------\n"
+             + "スマート勤怠管理システム 自動送信";
+
+    MailApp.sendEmail(toEmail, subject, body);
+
+    return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ヘッダー & アクションボタン群 -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900 flex items-center space-x-2">
+                        <i data-lucide="history" class="w-5 h-5 text-indigo-600"></i>
+                        <span>打刻履歴・データ管理</span>
+                    </h1>
+                    <p class="text-sm text-slate-500 mt-1">
+                        記録された出退勤データはブラウザ内に自動保存されます。
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2.5">
+                    <button onclick="exportCSV()"
+                        class="inline-flex items-center space-x-1.5 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-xl shadow-sm transition-colors">
+                        <i data-lucide="download" class="w-4 h-4 text-slate-500"></i>
+                        <span>CSVダウンロード</span>
+                    </button>
+                    <button onclick="openClearAllModal()"
+                        class="inline-flex items-center space-x-1.5 px-4 py-2.5 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-600 text-sm font-medium rounded-xl transition-colors">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        <span>全履歴をクリア</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 履歴テーブルカード -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <span class="text-sm font-semibold text-slate-700">打刻一覧（新しい順）</span>
+                    <span id="total-records-count" class="text-xs font-medium px-2.5 py-1 bg-slate-200/70 text-slate-700 rounded-full">
+                        全 0 件
+                    </span>
+                </div>
+
+                <!-- テーブルラッパー（横スクロール対応） -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                <th class="py-3.5 px-4 sm:px-6">日付</th>
+                                <th class="py-3.5 px-3">曜日</th>
+                                <th class="py-3.5 px-4">種別</th>
+                                <th class="py-3.5 px-4">時刻</th>
+                                <th class="py-3.5 px-4">控えメール</th>
+                                <th class="py-3.5 px-4">備考</th>
+                                <th class="py-3.5 px-4 sm:px-6 text-right">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body" class="divide-y divide-slate-100 text-sm">
+                            <!-- JSで動的に描画 -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- データが空の場合のプレースホルダー -->
+                <div id="empty-history-state" class="hidden py-16 px-4 text-center">
+                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 text-slate-400 mb-3">
+                        <i data-lucide="inbox" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-sm font-semibold text-slate-900">打刻履歴がありません</h3>
+                    <p class="text-xs text-slate-500 mt-1">「打刻」タブから出勤または退勤を記録してください。</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- フッター -->
+    <footer class="py-6 text-center text-xs text-slate-400">
+        &copy; 2026 スマート勤怠管理システム - LocalStorage 保存対応
+    </footer>
+
+    <!-- ==========================================
+         カスタム確認モーダル（alert/confirm代替）
+         ========================================== -->
+    <div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs transition-opacity">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-100 transform transition-all">
+            <div class="flex items-center space-x-3 text-rose-600 mb-3">
+                <div class="p-2 bg-rose-100 rounded-xl">
+                    <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+                </div>
+                <h3 id="modal-title" class="text-lg font-bold text-slate-900">確認</h3>
+            </div>
+            <p id="modal-message" class="text-sm text-slate-600 leading-relaxed mb-6">
+                本当にこの操作を実行しますか？
+            </p>
+            <div class="flex justify-end space-x-2.5">
+                <button onclick="closeConfirmModal()"
+                    class="px-4 py-2 rounded-xl text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors">
+                    キャンセル
+                </button>
+                <button id="modal-confirm-btn"
+                    class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors">
+                    削除する
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- トースト通知 -->
+    <div id="toast-notification" class="fixed bottom-5 right-5 z-50 hidden transform transition-all duration-300 translate-y-2 opacity-0">
+        <div class="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2.5 text-sm font-medium">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+            <span id="toast-message">処理が完了しました</span>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         JavaScript ロジック
+         ========================================== -->
+    <script>
+        // --- 定数・状態管理 ---
+        const STORAGE_KEY = 'smart_attendance_records_v1';
+        const MAIL_SETTINGS_KEY = 'smart_attendance_mail_settings_v1';
+        const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+        let attendanceRecords = [];
+        let mailSettings = {
+            enabled: false,
+            email: '',
+            userName: '',
+            gasUrl: ''
+        };
+        let pendingConfirmAction = null;
+
+        // カレンダー表示用の状態（表示中の年月 & 選択中の日付キー YYYY-MM-DD）
+        const initialNow = new Date();
+        let calendarYear = initialNow.getFullYear();
+        let calendarMonth = initialNow.getMonth(); // 0-indexed (0 = 1月)
+        let selectedDateKey = formatDateKey(initialNow);
+
+        // --- ユーティリティ：日付フォーマット ---
+        function formatDateKey(dateObj) {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dateObj.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        // --- ストレージの読み書き ---
+        function loadRecords() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                attendanceRecords = raw ? JSON.parse(raw) : [];
+                if (!Array.isArray(attendanceRecords)) attendanceRecords = [];
+            } catch (e) {
+                console.error('勤怠履歴の読み込みに失敗しました:', e);
+                attendanceRecords = [];
+            }
+        }
+
+        function saveRecords() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(attendanceRecords));
+            } catch (e) {
+                console.error('勤怠履歴の保存に失敗しました:', e);
+                showToast('ブラウザへのデータ保存に失敗しました');
+            }
+        }
+
+        // --- 全ビューの一括更新 ---
+        function renderAllViews() {
+            updateTodayStatusAndLogs();
+            renderCalendarView();
+            renderSettingsSummary();
+            renderHistoryTable();
+        }
+
+        // --- 挨拶バナーを閉じる ---
+        function hideGreetingBanner() {
+            const banner = document.getElementById('greeting-banner');
+            if (banner) banner.classList.add('hidden');
+        }
+
+        // --- 初期化処理 ---
+        window.addEventListener('DOMContentLoaded', () => {
+            // Lucideアイコンの初期化
+            lucide.createIcons();
+
+            // 保存済みデータの読み込み
+            loadRecords();
+            loadMailSettings();
+
+            // トグル表示連動
+            const toggleCheckbox = document.getElementById('mail-auto-enabled');
+            if (toggleCheckbox) {
+                toggleCheckbox.addEventListener('change', updateMailToggleLabel);
+            }
+
+            // 時計の開始とリサイズ対応
+            setupClockCanvas();
+            window.addEventListener('resize', setupClockCanvas);
+            updateClocks();
+            setInterval(updateClocks, 1000);
+
+            // UIの初期描画
+            renderAllViews();
+        });
+
+        // --- タブ切り替え（3タブ対応） ---
+        function switchTab(tabName) {
+            const views = {
+                stamp: document.getElementById('view-stamp'),
+                calendar: document.getElementById('view-calendar'),
+                settings: document.getElementById('view-settings')
+            };
+            const btns = {
+                stamp: document.getElementById('tab-btn-stamp'),
+                calendar: document.getElementById('tab-btn-calendar'),
+                settings: document.getElementById('tab-btn-settings')
+            };
+
+            const activeClass = 'flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 bg-white text-indigo-600 shadow-sm';
+            const inactiveClass = 'flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 text-slate-600 hover:text-slate-900';
+
+            Object.keys(views).forEach(key => {
+                if (key === tabName) {
+                    views[key].classList.remove('hidden');
+                    btns[key].className = activeClass;
+                    btns[key].setAttribute('aria-selected', 'true');
+                } else {
+                    views[key].classList.add('hidden');
+                    btns[key].className = inactiveClass;
+                    btns[key].setAttribute('aria-selected', 'false');
+                }
+            });
+
+            if (tabName === 'stamp') {
+                setupClockCanvas();
+                updateClocks();
+            } else if (tabName === 'calendar') {
+                renderCalendarView();
+            } else if (tabName === 'settings') {
+                renderSettingsSummary();
+                renderHistoryTable();
+            }
+        }
+
+        // --- アナログ時計のCanvas解像度調整 ---
+        function setupClockCanvas() {
+            const canvas = document.getElementById('analog-clock');
+            if (!canvas) return;
+            const rect = canvas.parentElement.getBoundingClientRect();
+            const size = Math.min(rect.width, rect.height) - 24; // padding分を考慮
+            if (size <= 0) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = size * dpr;
+            canvas.height = size * dpr;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+        }
+
+        // --- 時計の更新（デジタル & アナログ） ---
+        function updateClocks() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const weekday = WEEKDAYS[now.getDay()];
+
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+
+            // デジタル表示の更新
+            document.getElementById('digital-date').textContent = `${year}年${month}月${day}日 (${weekday})`;
+            document.getElementById('digital-time').textContent = `${hours}:${minutes}:${seconds}`;
+
+            // アナログ時計の描画
+            drawAnalogClock(now);
+        }
+
+        // --- アナログ時計の描画ロジック ---
+        function drawAnalogClock(now) {
+            const canvas = document.getElementById('analog-clock');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const width = canvas.width / dpr;
+            const height = canvas.height / dpr;
+            if (width <= 0 || height <= 0) return;
+
+            const radius = width / 2;
+            ctx.save();
+            ctx.clearRect(0, 0, width, height);
+            ctx.translate(radius, radius);
+
+            // 1. 文字盤の背景
+            ctx.beginPath();
+            ctx.arc(0, 0, radius - 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#e2e8f0'; // slate-200
+            ctx.stroke();
+
+            // 2. 目盛り（60分刻み・5分刻み）
+            for (let i = 0; i < 60; i++) {
+                const angle = (i * Math.PI) / 30;
+                const isHourMark = i % 5 === 0;
+                const innerR = radius * (isHourMark ? 0.84 : 0.90);
+                const outerR = radius * 0.94;
+
+                ctx.beginPath();
+                ctx.moveTo(Math.sin(angle) * innerR, -Math.cos(angle) * innerR);
+                ctx.lineTo(Math.sin(angle) * outerR, -Math.cos(angle) * outerR);
+                ctx.lineWidth = isHourMark ? 2.5 : 1;
+                ctx.strokeStyle = isHourMark ? '#334155' : '#cbd5e1'; // slate-700 / slate-300
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+
+            // 3. 数字（1〜12）
+            ctx.font = `600 ${Math.round(radius * 0.14)}px Inter, sans-serif`;
+            ctx.fillStyle = '#1e293b'; // slate-800
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            for (let num = 1; num <= 12; num++) {
+                const angle = (num * Math.PI) / 6;
+                const numR = radius * 0.70;
+                const x = Math.sin(angle) * numR;
+                const y = -Math.cos(angle) * numR;
+                ctx.fillText(num.toString(), x, y);
+            }
+
+            const sec = now.getSeconds();
+            const min = now.getMinutes();
+            const hr = now.getHours() % 12;
+
+            // 4. 時針
+            const hrAngle = ((hr + min / 60) * Math.PI) / 6;
+            drawHand(ctx, hrAngle, radius * 0.50, 5, '#0f172a'); // slate-900
+
+            // 5. 分針
+            const minAngle = ((min + sec / 60) * Math.PI) / 30;
+            drawHand(ctx, minAngle, radius * 0.74, 3.5, '#334155'); // slate-700
+
+            // 6. 秒針
+            const secAngle = (sec * Math.PI) / 30;
+            // 秒針の後ろ側の尾
+            ctx.save();
+            ctx.rotate(secAngle);
+            ctx.beginPath();
+            ctx.moveTo(0, radius * 0.16);
+            ctx.lineTo(0, -radius * 0.82);
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = '#4f46e5'; // indigo-600
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            ctx.restore();
+
+            // 7. 中心のピン
+            ctx.beginPath();
+            ctx.arc(0, 0, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#4f46e5';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(0, 0, 2, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawHand(ctx, angle, length, width, color) {
+            ctx.save();
+            ctx.rotate(angle);
+            ctx.beginPath();
+            ctx.moveTo(0, 8);
+            ctx.lineTo(0, -length);
+            ctx.lineWidth = width;
+            ctx.strokeStyle = color;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // --- 打刻処理 ---
+        async function recordAttendance(type) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            const displayDate = `${year}/${month}/${day}`;
+            const weekday = WEEKDAYS[now.getDay()];
+
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const timeStr = `${hours}:${minutes}:${seconds}`;
+
+            const noteInput = document.getElementById('stamp-note');
+            const note = noteInput.value.trim();
+
+            const canAutoSendMail = mailSettings.enabled && mailSettings.email && mailSettings.gasUrl;
+
+            const record = {
+                id: Date.now().toString() + Math.random().toString(36).substring(2, 6),
+                timestamp: now.getTime(),
+                dateKey: dateStr,
+                date: displayDate,
+                weekday: weekday,
+                type: type, // '出勤' or '退勤'
+                time: timeStr,
+                note: note,
+                mailStatus: canAutoSendMail ? 'sending' : 'disabled'
+            };
+
+            // 先頭（新しい順）に追加して保存
+            attendanceRecords.unshift(record);
+            saveRecords();
+
+            // カレンダーの選択日も打刻した日に合わせる
+            selectedDateKey = dateStr;
+            calendarYear = now.getFullYear();
+            calendarMonth = now.getMonth();
+
+            // 入力欄クリア
+            noteInput.value = '';
+
+            // 挨拶バナーの表示
+            showGreetingBanner(type, timeStr, record.mailStatus);
+
+            // 画面更新
+            renderAllViews();
+
+            // GAS経由でOutlookへ控えメールを自動送信
+            if (canAutoSendMail) {
+                const success = await dispatchGasEmail({
+                    email: mailSettings.email,
+                    userName: mailSettings.userName,
+                    type: type,
+                    time: `${displayDate} (${weekday}) ${timeStr}`,
+                    note: note
+                });
+
+                record.mailStatus = success ? 'sent' : 'error';
+                saveRecords();
+                updateGreetingMailBadge(record.mailStatus);
+                renderHistoryTable();
+            }
+        }
+
+        // --- GAS WebアプリへPOST送信する共通関数 ---
+        async function dispatchGasEmail(payload) {
+            try {
+                // GASのWebアプリはクロスオリジンPOST時にリダイレクトを返すため mode: 'no-cors' で送信
+                await fetch(mailSettings.gasUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: {
+                        'Content-Type': 'text/plain;charset=utf-8'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                return true;
+            } catch (error) {
+                console.error('GASメール送信エラー:', error);
+                return false;
+            }
+        }
+
+        // --- 挨拶メッセージバナー制御 ---
+        function showGreetingBanner(type, timeStr, mailStatus = 'disabled') {
+            const banner = document.getElementById('greeting-banner');
+            const card = document.getElementById('greeting-card');
+            const iconBg = document.getElementById('greeting-icon-bg');
+            const icon = document.getElementById('greeting-icon');
+            const title = document.getElementById('greeting-title');
+            const sub = document.getElementById('greeting-sub');
+
+            if (type === '出勤') {
+                card.className = 'rounded-2xl p-4 sm:p-5 border border-indigo-200 bg-indigo-50 text-indigo-950 flex items-center justify-between shadow-sm';
+                iconBg.className = 'p-2.5 rounded-xl bg-indigo-600 text-white';
+                icon.setAttribute('data-lucide', 'sun');
+                title.textContent = 'おはようございます。';
+                sub.textContent = `${timeStr} に出勤を記録しました。今日も一日よろしくお願いいたします！`;
+            } else {
+                card.className = 'rounded-2xl p-4 sm:p-5 border border-emerald-200 bg-emerald-50 text-emerald-950 flex items-center justify-between shadow-sm';
+                iconBg.className = 'p-2.5 rounded-xl bg-emerald-600 text-white';
+                icon.setAttribute('data-lucide', 'moon');
+                title.textContent = 'お疲れさまでした。';
+                sub.textContent = `${timeStr} に退勤を記録しました。ゆっくりお休みください！`;
+            }
+
+            updateGreetingMailBadge(mailStatus);
+            lucide.createIcons();
+            banner.classList.remove('hidden');
+        }
+
+        // ==========================================
+        // カレンダータブ：月間カレンダー & 日別詳細描画
+        // ==========================================
+        function changeCalendarMonth(delta) {
+            calendarMonth += delta;
+            if (calendarMonth < 0) {
+                calendarMonth = 11;
+                calendarYear--;
+            } else if (calendarMonth > 11) {
+                calendarMonth = 0;
+                calendarYear++;
+            }
+            renderCalendarView();
+        }
+
+        function resetCalendarToToday() {
+            const now = new Date();
+            calendarYear = now.getFullYear();
+            calendarMonth = now.getMonth();
+            selectedDateKey = formatDateKey(now);
+            renderCalendarView();
+        }
+
+        function selectCalendarDate(dateKey) {
+            selectedDateKey = dateKey;
+            renderCalendarView();
+        }
+
+        function renderCalendarView() {
+            const monthLabelEl = document.getElementById('calendar-month-label');
+            const monthWorkdaysEl = document.getElementById('calendar-month-workdays');
+            const gridBodyEl = document.getElementById('calendar-grid-body');
+            if (!monthLabelEl || !gridBodyEl) return;
+
+            const monthStr = String(calendarMonth + 1).padStart(2, '0');
+            const monthPrefix = `${calendarYear}-${monthStr}`;
+            monthLabelEl.textContent = `${calendarYear}年 ${calendarMonth + 1}月`;
+
+            // 対象月の日別レコードをグルーピング
+            const recordsByDate = {};
+            const workedDaysSet = new Set();
+            attendanceRecords.forEach(rec => {
+                if (!recordsByDate[rec.dateKey]) recordsByDate[rec.dateKey] = [];
+                recordsByDate[rec.dateKey].push(rec);
+                if (rec.dateKey.startsWith(monthPrefix) && rec.type === '出勤') {
+                    workedDaysSet.add(rec.dateKey);
+                }
+            });
+
+            if (monthWorkdaysEl) {
+                monthWorkdaysEl.textContent = workedDaysSet.size;
+            }
+
+            const firstDayOfWeek = new Date(calendarYear, calendarMonth, 1).getDay();
+            const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+            const todayKey = formatDateKey(new Date());
+
+            let cellsHtml = '';
+
+            // 前月の空白セル
+            for (let i = 0; i < firstDayOfWeek; i++) {
+                cellsHtml += `<div class="min-h-[76px] sm:min-h-[96px] bg-slate-50/70 p-1.5"></div>`;
+            }
+
+            // 当月の日付セル
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayStr = String(day).padStart(2, '0');
+                const dateKey = `${calendarYear}-${monthStr}-${dayStr}`;
+                const dayOfWeek = (firstDayOfWeek + day - 1) % 7;
+                const dayRecords = recordsByDate[dateKey] || [];
+                const hasClockIn = dayRecords.some(r => r.type === '出勤');
+                const hasClockOut = dayRecords.some(r => r.type === '退勤');
+                const isSelected = selectedDateKey === dateKey;
+                const isToday = todayKey === dateKey;
+
+                // 時系列（昇順）に並べて最初の出勤・最後の退勤を取得
+                const chronological = [...dayRecords].reverse();
+                const firstIn = chronological.find(r => r.type === '出勤');
+                const lastOut = [...chronological].reverse().find(r => r.type === '退勤');
+
+                let cellBg = 'bg-white hover:bg-slate-50';
+                if (hasClockIn) cellBg = 'bg-indigo-50/40 hover:bg-indigo-50/70';
+                if (isSelected) cellBg = 'bg-indigo-50 ring-2 ring-inset ring-indigo-500';
+
+                const numColor = dayOfWeek === 0 ? 'text-rose-600' : (dayOfWeek === 6 ? 'text-blue-600' : 'text-slate-700');
+                const todayBadge = isToday
+                    ? 'bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold'
+                    : `font-semibold ${numColor}`;
+
+                cellsHtml += `
+                    <button type="button" onclick="selectCalendarDate('${dateKey}')"
+                        class="min-h-[76px] sm:min-h-[96px] p-1.5 sm:p-2 text-left flex flex-col justify-between transition-colors ${cellBg} focus:outline-none">
+                        <div class="flex items-center justify-between w-full">
+                            <span class="text-xs sm:text-sm ${todayBadge}">${day}</span>
+                            ${hasClockIn ? `<span class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-bold rounded bg-indigo-100 text-indigo-700">出勤</span>` : ''}
+                        </div>
+                        <div class="w-full space-y-0.5 mt-1">
+                            ${firstIn ? `<div class="text-[10px] sm:text-xs font-mono text-indigo-700 truncate">出 ${firstIn.time.slice(0, 5)}</div>` : ''}
+                            ${lastOut ? `<div class="text-[10px] sm:text-xs font-mono text-emerald-700 truncate">退 ${lastOut.time.slice(0, 5)}</div>` : ''}
+                            ${(!firstIn && !lastOut && dayRecords.length > 0) ? `<div class="w-2 h-2 rounded-full bg-emerald-500"></div>` : ''}
+                            ${(hasClockIn && !firstIn) ? `<span class="sm:hidden inline-block w-2 h-2 rounded-full bg-indigo-500"></span>` : ''}
+                        </div>
+                    </button>
+                `;
+            }
+
+            gridBodyEl.innerHTML = cellsHtml;
+            renderSelectedDayDetails(recordsByDate[selectedDateKey] || []);
+        }
+
+        function renderSelectedDayDetails(dayRecords) {
+            const titleEl = document.getElementById('selected-day-title');
+            const worktimeEl = document.getElementById('selected-day-worktime');
+            const detailsEl = document.getElementById('selected-day-details');
+            if (!titleEl || !detailsEl) return;
+
+            const [y, m, d] = selectedDateKey.split('-').map(Number);
+            const dateObj = new Date(y, m - 1, d);
+            const weekday = WEEKDAYS[dateObj.getDay()];
+            titleEl.textContent = `${y}年${String(m).padStart(2, '0')}月${String(d).padStart(2, '0')}日 (${weekday}) の勤怠詳細`;
+
+            if (dayRecords.length === 0) {
+                if (worktimeEl) worktimeEl.classList.add('hidden');
+                detailsEl.innerHTML = `<p class="text-sm text-slate-400 py-4 text-center">この日の打刻記録はありません。</p>`;
+                return;
+            }
+
+            const chronological = [...dayRecords].reverse();
+            const firstIn = chronological.find(r => r.type === '出勤');
+            const lastOut = [...chronological].reverse().find(r => r.type === '退勤');
+
+            if (worktimeEl) {
+                if (firstIn && lastOut && lastOut.timestamp > firstIn.timestamp) {
+                    const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
+                    const hrs = Math.floor(diffMins / 60);
+                    const mins = diffMins % 60;
+                    worktimeEl.innerHTML = `<i data-lucide="clock" class="w-3.5 h-3.5 text-indigo-600"></i><span>滞在時間: ${hrs}時間${mins}分</span>`;
+                    worktimeEl.classList.remove('hidden');
+                } else {
+                    worktimeEl.classList.add('hidden');
+                }
+            }
+
+            detailsEl.innerHTML = `
+                <div class="space-y-2.5">
+                    ${chronological.map(rec => {
+                        const isClockIn = rec.type === '出勤';
+                        const badgeClass = isClockIn
+                            ? 'bg-indigo-100 text-indigo-800'
+                            : 'bg-emerald-100 text-emerald-800';
+                        return `
+                            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                <div class="flex items-center space-x-3">
+                                    <span class="px-2.5 py-1 rounded-lg text-xs font-bold ${badgeClass}">${rec.type}</span>
+                                    <span class="font-mono font-bold text-slate-800 text-sm">${escapeHtml(rec.time)}</span>
+                                    ${rec.note ? `<span class="text-xs text-slate-500">・${escapeHtml(rec.note)}</span>` : ''}
+                                </div>
+                                <span class="text-xs text-slate-400">${rec.mailStatus === 'sent' ? 'メール送信済' : ''}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function updateGreetingMailBadge(mailStatus) {
+            const badge = document.getElementById('greeting-mail-status');
+            if (!badge) return;
+
+            if (mailStatus === 'sending') {
+                badge.className = 'mt-1.5 inline-flex items-center space-x-1.5 text-xs font-medium px-2.5 py-0.5 rounded-md bg-white/80 text-indigo-700';
+                badge.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>Outlookへ控えメールを送信中...</span>`;
+            } else if (mailStatus === 'sent') {
+                badge.className = 'mt-1.5 inline-flex items-center space-x-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md bg-white/90 text-emerald-700';
+                badge.innerHTML = `<i data-lucide="mail-check" class="w-3.5 h-3.5"></i><span>Outlook（${escapeHtml(mailSettings.email)}）へ控えを送信しました</span>`;
+            } else if (mailStatus === 'error') {
+                badge.className = 'mt-1.5 inline-flex items-center space-x-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-700';
+                badge.innerHTML = `<i data-lucide="alert-circle" class="w-3.5 h-3.5"></i><span>メール送信に失敗しました（設定管理のURLを確認してください）</span>`;
+            } else {
+                badge.className = 'mt-1.5 inline-flex items-center space-x-1.5 text-xs font-medium px-2.5 py-0.5 rounded-md bg-white/60 text-slate-600';
+                badge.innerHTML = `<i data-lucide="mail-x" class="w-3.5 h-3.5"></i><span>自動メール送信：OFF（設定管理から有効化できます）</span>`;
+            }
+            lucide.createIcons();
+        }
+
+        // ==========================================
+        // 設定管理タブ：出勤日数サマリー計算・描画
+        // ==========================================
+        function renderSettingsSummary() {
+            const totalWorkdaysEl = document.getElementById('stat-total-workdays');
+            const currentMonthWorkdaysEl = document.getElementById('stat-current-month-workdays');
+            const currentMonthLabelEl = document.getElementById('stat-current-month-label');
+            const totalLogsEl = document.getElementById('stat-total-logs');
+
+            if (!totalWorkdaysEl) return;
+
+            // 「出勤」打刻があるユニークな日付のセットを作成してカウント
+            const allWorkedDates = new Set(
+                attendanceRecords
+                    .filter(r => r.type === '出勤')
+                    .map(r => r.dateKey)
+            );
+
+            // 今月のプレフィックス (YYYY-MM)
+            const now = new Date();
+            const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const currentMonthWorkedDates = new Set(
+                attendanceRecords
+                    .filter(r => r.type === '出勤' && r.dateKey.startsWith(currentMonthPrefix))
+                    .map(r => r.dateKey)
+            );
+
+            totalWorkdaysEl.textContent = allWorkedDates.size;
+            currentMonthLabelEl.textContent = `今月（${now.getMonth() + 1}月）の出勤日数`;
+            currentMonthWorkdaysEl.textContent = currentMonthWorkedDates.size;
+            totalLogsEl.textContent = attendanceRecords.length;
+        }
+
+        // --- 本日のステータスとログ描画 ---
+        function updateTodayStatusAndLogs() {
+            const now = new Date();
+            const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            
+            const todayRecords = attendanceRecords.filter(r => r.dateKey === todayKey);
+            const badge = document.getElementById('today-status-badge');
+            const dot = document.getElementById('today-status-dot');
+            const text = document.getElementById('today-status-text');
+            const logsContainer = document.getElementById('today-logs-container');
+
+            if (todayRecords.length === 0) {
+                badge.className = 'inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-slate-200 bg-slate-100 text-slate-600';
+                dot.className = 'w-2 h-2 rounded-full bg-slate-400';
+                text.textContent = '本日の打刻：未出勤';
+                logsContainer.innerHTML = '<p class="text-xs text-slate-400 py-2">本日の打刻記録はまだありません。</p>';
+                return;
+            }
+
+            // 最新の打刻種別でステータス判定
+            const latest = todayRecords[0];
+            if (latest.type === '出勤') {
+                badge.className = 'inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-indigo-200 bg-indigo-50 text-indigo-700';
+                dot.className = 'w-2 h-2 rounded-full bg-indigo-600 animate-pulse';
+                text.textContent = `勤務中（${latest.time} 出勤）`;
+            } else {
+                badge.className = 'inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700';
+                dot.className = 'w-2 h-2 rounded-full bg-emerald-600';
+                text.textContent = `退勤済み（${latest.time} 退勤）`;
+            }
+
+            // 本日のログ一覧（古い順に表示した方が時系列が分かりやすいので反転して表示）
+            const chronologicalToday = [...todayRecords].reverse();
+            logsContainer.innerHTML = `
+                <div class="flex flex-wrap gap-2">
+                    ${chronologicalToday.map(rec => {
+                        const isClockIn = rec.type === '出勤';
+                        const badgeStyle = isClockIn 
+                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200' 
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                        return `
+                            <div class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl border ${badgeStyle} text-xs">
+                                <span class="font-bold">${rec.type}</span>
+                                <span class="font-mono font-medium">${rec.time}</span>
+                                ${rec.note ? `<span class="opacity-75 truncate max-w-[140px]">(${escapeHtml(rec.note)})</span>` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        // --- 設定管理タブの履歴テーブル描画 ---
+        function renderHistoryTable() {
+            const tbody = document.getElementById('history-table-body');
+            const emptyState = document.getElementById('empty-history-state');
+            const countBadge = document.getElementById('total-records-count');
+
+            countBadge.textContent = `全 ${attendanceRecords.length} 件`;
+
+            if (attendanceRecords.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            tbody.innerHTML = attendanceRecords.map(rec => {
+                const isClockIn = rec.type === '出勤';
+                const typeBadge = isClockIn
+                    ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold bg-indigo-100 text-indigo-800">出勤</span>'
+                    : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-100 text-emerald-800">退勤</span>';
+
+                let mailBadge = '<span class="text-xs text-slate-400">未送信</span>';
+                if (rec.mailStatus === 'sent') {
+                    mailBadge = '<span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200"><i data-lucide="check" class="w-3 h-3"></i><span>送信済</span></span>';
+                } else if (rec.mailStatus === 'error') {
+                    mailBadge = '<span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200"><span>送信失敗</span></span>';
+                }
+
+                const weekdayColor = rec.weekday === '日' ? 'text-rose-600 font-semibold' : (rec.weekday === '土' ? 'text-blue-600 font-semibold' : 'text-slate-600');
+
+                return `
+                    <tr class="hover:bg-slate-50/80 transition-colors">
+                        <td class="py-3.5 px-4 sm:px-6 font-medium text-slate-900 whitespace-nowrap">${escapeHtml(rec.date)}</td>
+                        <td class="py-3.5 px-3 whitespace-nowrap ${weekdayColor}">${escapeHtml(rec.weekday)}</td>
+                        <td class="py-3.5 px-4 whitespace-nowrap">${typeBadge}</td>
+                        <td class="py-3.5 px-4 font-mono font-semibold text-slate-800 whitespace-nowrap">${escapeHtml(rec.time)}</td>
+                        <td class="py-3.5 px-4 whitespace-nowrap">${mailBadge}</td>
+                        <td class="py-3.5 px-4 text-slate-600 max-w-xs truncate">${rec.note ? escapeHtml(rec.note) : '<span class="text-slate-300">-</span>'}</td>
+                        <td class="py-3.5 px-4 sm:px-6 text-right whitespace-nowrap">
+                            <button onclick="deleteSingleRecord('${rec.id}')" title="この履歴を削除"
+                                class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        // ==========================================
+        // Outlookメール自動送信設定（GAS連携）ロジック
+        // ==========================================
+        function loadMailSettings() {
+            try {
+                const raw = localStorage.getItem(MAIL_SETTINGS_KEY);
+                if (raw) {
+                    mailSettings = { ...mailSettings, ...JSON.parse(raw) };
+                }
+            } catch (e) {
+                console.error('メール設定の読み込みに失敗しました:', e);
+            }
+
+            const enabledEl = document.getElementById('mail-auto-enabled');
+            const emailEl = document.getElementById('mail-target-email');
+            const userNameEl = document.getElementById('mail-user-name');
+            const gasUrlEl = document.getElementById('mail-gas-url');
+
+            if (enabledEl) enabledEl.checked = Boolean(mailSettings.enabled);
+            if (emailEl) emailEl.value = mailSettings.email || '';
+            if (userNameEl) userNameEl.value = mailSettings.userName || '';
+            if (gasUrlEl) gasUrlEl.value = mailSettings.gasUrl || '';
+            updateMailToggleLabel();
+        }
+
+        function updateMailToggleLabel() {
+            const enabledEl = document.getElementById('mail-auto-enabled');
+            const labelEl = document.getElementById('mail-toggle-label');
+            if (!enabledEl || !labelEl) return;
+
+            if (enabledEl.checked) {
+                labelEl.textContent = '自動送信: ON';
+                labelEl.className = 'ms-2.5 text-xs font-bold text-indigo-600';
+            } else {
+                labelEl.textContent = '自動送信: OFF';
+                labelEl.className = 'ms-2.5 text-xs font-bold text-slate-500';
+            }
+        }
+
+        function saveMailSettings() {
+            const enabled = document.getElementById('mail-auto-enabled').checked;
+            const email = document.getElementById('mail-target-email').value.trim();
+            const userName = document.getElementById('mail-user-name').value.trim();
+            const gasUrl = document.getElementById('mail-gas-url').value.trim();
+
+            if (enabled && (!email || !gasUrl)) {
+                showToast('自動送信をONにする場合は、OutlookアドレスとGAS URLを入力してください');
+                return;
+            }
+
+            mailSettings = { enabled, email, userName, gasUrl };
+            try {
+                localStorage.setItem(MAIL_SETTINGS_KEY, JSON.stringify(mailSettings));
+                showToast('Outlookメール自動送信設定を保存しました');
+            } catch (e) {
+                showToast('設定の保存に失敗しました');
+            }
+        }
+
+        async function sendTestEmail() {
+            const email = document.getElementById('mail-target-email').value.trim();
+            const userName = document.getElementById('mail-user-name').value.trim();
+            const gasUrl = document.getElementById('mail-gas-url').value.trim();
+
+            if (!email || !gasUrl) {
+                showToast('送信先OutlookアドレスとGAS URLを入力してください');
+                return;
+            }
+
+            // 入力値で一時的に設定を更新してテスト送信
+            mailSettings.email = email;
+            mailSettings.userName = userName;
+            mailSettings.gasUrl = gasUrl;
+
+            const btn = document.getElementById('btn-test-mail');
+            btn.disabled = true;
+            showToast('テストメールを送信しています...');
+
+            const now = new Date();
+            const timeStr = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+            const ok = await dispatchGasEmail({
+                email: email,
+                userName: userName,
+                type: 'テスト送信',
+                time: timeStr,
+                note: 'スマート勤怠管理システムからの接続確認メールです'
+            });
+
+            btn.disabled = false;
+            if (ok) {
+                showToast(`${email} 宛てにテスト送信リクエストを完了しました`);
+            } else {
+                showToast('送信に失敗しました。GAS URLが正しいか確認してください');
+            }
+        }
+
+        function toggleGasGuide() {
+            const guide = document.getElementById('gas-setup-guide');
+            if (guide) {
+                guide.classList.toggle('hidden');
+            }
+        }
+
+        function copyGasCode() {
+            const codeEl = document.getElementById('gas-script-code');
+            if (!codeEl) return;
+
+            const textarea = document.createElement('textarea');
+            textarea.value = codeEl.textContent;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            showToast('GASスクリプトをクリップボードにコピーしました');
+        }
+
+        // --- 個別削除機能 ---
+        function deleteSingleRecord(id) {
+            attendanceRecords = attendanceRecords.filter(r => r.id !== id);
+            saveRecords();
+            renderAllViews();
+            showToast('1件の履歴を削除しました');
+        }
+
+        // --- 全履歴クリア（確認モーダル付き） ---
+        function openClearAllModal() {
+            if (attendanceRecords.length === 0) {
+                showToast('削除する履歴がありません');
+                return;
+            }
+            document.getElementById('modal-title').textContent = '全履歴のクリア';
+            document.getElementById('modal-message').textContent = `保存されているすべての打刻履歴（${attendanceRecords.length}件）を完全に削除します。この操作は取り消せません。よろしいですか？`;
+            
+            pendingConfirmAction = () => {
+                attendanceRecords = [];
+                saveRecords();
+                renderAllViews();
+                hideGreetingBanner();
+                showToast('すべての打刻履歴をクリアしました');
+            };
+
+            const modal = document.getElementById('confirm-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeConfirmModal() {
+            const modal = document.getElementById('confirm-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            pendingConfirmAction = null;
+        }
+
+        document.getElementById('modal-confirm-btn').addEventListener('click', () => {
+            if (typeof pendingConfirmAction === 'function') {
+                pendingConfirmAction();
+            }
+            closeConfirmModal();
+        });
+
+        // --- CSV エクスポート機能 ---
+        function exportCSV() {
+            if (attendanceRecords.length === 0) {
+                showToast('エクスポートするデータがありません');
+                return;
+            }
+
+            // Excelで文字化けしないようBOM付きUTF-8を使用
+            const bom = '\uFEFF';
+            const headers = ['日付', '曜日', '種別', '時刻', '備考'];
+            const rows = attendanceRecords.map(rec => [
+                `"${rec.date}"`,
+                `"${rec.weekday}"`,
+                `"${rec.type}"`,
+                `"${rec.time}"`,
+                `"${(rec.note || '').replace(/"/g, '""')}"`
+            ]);
+
+            const csvContent = bom + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+
+            const now = new Date();
+            const filename = `勤怠履歴_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}.csv`;
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            showToast('CSVファイルをダウンロードしました');
+        }
+
+        // --- トースト通知 ---
+        let toastTimeout = null;
+        function showToast(message) {
+            const toast = document.getElementById('toast-notification');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.textContent = message;
+
+            toast.classList.remove('hidden');
+            // アニメーション用フレーム遅延
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => {
+                    toast.classList.add('hidden');
+                }, 300);
+            }, 3000);
+        }
+
+        // --- XSS対策エスケープ ---
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>
